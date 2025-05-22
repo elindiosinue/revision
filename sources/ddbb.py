@@ -2,7 +2,17 @@
 # pip install psycopg2-binary
 import os
 import psycopg2
+import logging
 from datetime import datetime
+
+REFERENCE_ID = None  # Variable global
+
+# Configuración de logging (opcional si usas la BD como único registro)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def set_reference_id(value):
+    global REFERENCE_ID
+    REFERENCE_ID = value
 
 def connect():
     conn = None
@@ -127,6 +137,144 @@ def get_table_columns(cur, table_name='rnts_resumenes', schema='public'):
         fields.append((name, python_type))
     
     return fields
+
+def insertar(table_name, raw_values):
+    id = None
+    sql = ''
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                # Obtener estructura de la tabla
+                table_fields = get_table_columns(cur, table_name)
+                
+                # Convertimos los valores
+                converted_values = []
+                columns = []
+                for field_name, field_type in table_fields:
+                    if field_name in ('created_at', 'updated_at', 'id'):
+                        continue  # Se generan automáticamente
+                    value = raw_values.get(field_name)
+                    converted = safe_convert(value, field_type)
+                    converted_values.append(converted)
+                    columns.append(field_name)
+
+                # Preparamos SQL
+                #columns = [f'"{name}"' for name, _ in table_fields if name not in ('created_at', 'updated_at', 'id')]
+                placeholders = ['%s'] * len(converted_values)
+
+                sql = f"""
+                    INSERT INTO public.{table_name} ({', '.join(columns)})
+                    VALUES ({', '.join(placeholders)})
+                    RETURNING id;
+                """
+
+                #print(f"sql: {sql}, converted_values: {converted_values}")
+                cur.execute(sql, converted_values)
+                id = cur.fetchone()[0]
+                conn.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"insertar: Error al insertar en la tabla: {table_name} ## sql: {sql} ## {error}")
+        num_errors += 1 
+    finally:
+        if conn is not None:
+            conn.close()
+    return id
+
+def actualizar(table_name, id, raw_values):
+    sql = ''
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                table_fields = get_table_columns(cur, table_name)
+                            
+                # Convertimos los valores
+                converted_values = []
+                columns = []
+                for field_name, field_type in table_fields:
+                    if field_name in ('created_at', 'updated_at', 'id'):
+                        continue  # Se generan automáticamente
+                    value = raw_values.get(field_name)
+                    converted = safe_convert(value, field_type)
+                    converted_values.append(converted)
+                    columns.append(field_name)
+
+                # Crear SET parte de la consulta
+                placeholders = ', '.join([f"{col} = %s" for col in columns])
+
+                # Filtrar campos excluidos
+                #update_columns = [col for col in columns if col not in ('created_at', 'updated_at', 'id')]
+
+                # Construir consulta completa
+                sql = f"""
+                    UPDATE public.{table_name}
+                    SET {placeholders}
+                    WHERE id = %s;
+                """
+
+                # Preparar valores en orden correcto según campos de la tabla
+                converted_values.append(id)  # Añadir el ID al final para el WHERE
+
+                # Ejecutar
+                #print(f"sql: {sql}, converted_values: {converted_values}")
+                cur.execute(sql, converted_values)
+                conn.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error al actualizar en la tabla: {table_name} ## sql: {sql} ### {error}")
+        conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+def log_tipo():
+    """
+    Registra eventos en una tabla de tipos de logs con código y observaciones.    
+    """
+    try:
+        LOG_TABLE = "logs_tipos"  # Nombre de tu tabla de logs
+        # Datos estructurados para inserción
+        data = {
+            "codigo": f"{datetime.now().strftime("%Y%m%d%H%M%S")}_RNT"
+        }
+        
+        # Insertar en BD y obtener ID del registro (opcional)
+        log_id = insertar(LOG_TABLE, data)
+        if log_id:
+            logging.debug(f"Log registrado exitosamente: ID {log_id}")
+        set_reference_id(log_id)
+        
+    except Exception as e:
+        # Fallback a logging por consola si falla inserción
+        logging.error(f"Fallo al insertar log en BD: {e}")
+
+def logs_datos(mensaje):
+    """
+    Registra eventos en una tabla de logs con clave foránea, timestamp y mensaje.
+    
+    Args:
+        table_name (str): Nombre de la tabla de logs (ej: 'logs_datos').
+        reference_id (int): ID de referencia (archivo, proceso, etc.).
+        mensaje (str): Mensaje descriptivo del evento.
+    """
+    try:
+        LOG_TABLE = "logs_datos"  # Nombre de tu tabla de logs
+        # Datos estructurados para inserción
+        datos = {
+            "reference_id": REFERENCE_ID,
+            "timestamp": datetime.now(),
+            "message": mensaje
+        }
+        
+        # Insertar en BD y obtener ID del registro (opcional)
+        log_id = insertar(LOG_TABLE, datos)
+        if log_id:
+            logging.debug(f"Log registrado exitosamente: ID {log_id}")
+        return log_id
+        
+    except Exception as e:
+        # Fallback a logging por consola si falla inserción
+        logging.error(f"Fallo al insertar log en BD: {e}")
+        return None
+
 
 if __name__ == '__main__':
     connect()
