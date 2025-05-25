@@ -14,6 +14,56 @@ def set_reference_id(value):
     global REFERENCE_ID
     REFERENCE_ID = value
 
+def log_tipo():
+    """
+    Registra eventos en una tabla de tipos de logs con código y observaciones.    
+    """
+    try:
+        LOG_TABLE = "logs_tipos"  # Nombre de tu tabla de logs
+        # Datos estructurados para inserción
+        data = {
+            "codigo": f"{datetime.now().strftime("%Y%m%d%H%M%S")}_RNT"
+        }
+        
+        # Insertar en BD y obtener ID del registro (opcional)
+        log_id = insertar(LOG_TABLE, data)
+        if log_id:
+            #logging.debug(f"Log registrado exitosamente: ID {log_id}")
+            set_reference_id(log_id)
+        
+    except Exception as e:
+        # Fallback a logging por consola si falla inserción
+        logging.error(f"Fallo al insertar log en BD: {e}")
+
+def logs_datos(mensaje, nivel='E'):
+    """
+    Registra eventos en una tabla de logs con clave foránea, timestamp y mensaje.
+    
+    Args:
+        mensaje (str): Mensaje descriptivo del evento.
+        nivel (str): Nivel del error. 
+    """
+    try:
+        LOG_TABLE = "logs_datos"  # Nombre de tu tabla de logs
+        # Datos estructurados para inserción
+        datos = {
+            "reference_id": REFERENCE_ID,
+            "timestamp": datetime.now(),
+            "nivel_logs_cgrc": nivel,
+            "message": mensaje
+        }
+        
+        # Insertar en BD y obtener ID del registro (opcional)
+        log_id = insertar(LOG_TABLE, datos)
+        if log_id:
+            logging.debug(f"Log registrado exitosamente: ID {log_id}")
+        return log_id
+        
+    except Exception as e:
+        # Fallback a logging por consola si falla inserción
+        logging.error(f"Fallo al insertar log en BD: {e}")
+        return None
+
 def connect():
     conn = None
     try:
@@ -174,7 +224,6 @@ def insertar(table_name, raw_values):
                 conn.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(f"insertar: Error al insertar en la tabla: {table_name} ## sql: {sql} ## {error}")
-        num_errors += 1 
     finally:
         if conn is not None:
             conn.close()
@@ -224,57 +273,6 @@ def actualizar(table_name, id, raw_values):
     finally:
         if conn:
             conn.close()
-
-def log_tipo():
-    """
-    Registra eventos en una tabla de tipos de logs con código y observaciones.    
-    """
-    try:
-        LOG_TABLE = "logs_tipos"  # Nombre de tu tabla de logs
-        # Datos estructurados para inserción
-        data = {
-            "codigo": f"{datetime.now().strftime("%Y%m%d%H%M%S")}_RNT"
-        }
-        
-        # Insertar en BD y obtener ID del registro (opcional)
-        log_id = insertar(LOG_TABLE, data)
-        if log_id:
-            logging.debug(f"Log registrado exitosamente: ID {log_id}")
-        set_reference_id(log_id)
-        
-    except Exception as e:
-        # Fallback a logging por consola si falla inserción
-        logging.error(f"Fallo al insertar log en BD: {e}")
-
-def logs_datos(mensaje):
-    """
-    Registra eventos en una tabla de logs con clave foránea, timestamp y mensaje.
-    
-    Args:
-        table_name (str): Nombre de la tabla de logs (ej: 'logs_datos').
-        reference_id (int): ID de referencia (archivo, proceso, etc.).
-        mensaje (str): Mensaje descriptivo del evento.
-    """
-    try:
-        LOG_TABLE = "logs_datos"  # Nombre de tu tabla de logs
-        # Datos estructurados para inserción
-        datos = {
-            "reference_id": REFERENCE_ID,
-            "timestamp": datetime.now(),
-            "message": mensaje
-        }
-        
-        # Insertar en BD y obtener ID del registro (opcional)
-        log_id = insertar(LOG_TABLE, datos)
-        if log_id:
-            logging.debug(f"Log registrado exitosamente: ID {log_id}")
-        return log_id
-        
-    except Exception as e:
-        # Fallback a logging por consola si falla inserción
-        logging.error(f"Fallo al insertar log en BD: {e}")
-        return None
-
 
 if __name__ == '__main__':
     connect()
